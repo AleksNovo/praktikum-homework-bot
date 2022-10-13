@@ -38,6 +38,7 @@ HOMEWORK_STATUSES = {
 ERROR_API_MESSAGE = "API возвращает код, отличный от 200:"
 CHECK_TOKENS_ERROR = "Требуемые переменные окружения отсутствуют:"
 
+
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат по TELEGRAM_CHAT_ID."""
     try:
