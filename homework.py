@@ -4,6 +4,8 @@ import sys
 import time
 import requests
 from dotenv import load_dotenv
+from http import HTTPStatus
+
 from telegram import Bot
 
 
@@ -12,6 +14,7 @@ logging.basicConfig(
     format='%(asctime)s, %(levelname)s, %(message)s',
     handlers=[logging.FileHandler('log.txt'),
               logging.StreamHandler(sys.stdout)])
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -32,32 +35,34 @@ HOMEWORK_STATUSES = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+ERROR_API_MESSAGE = "API возвращает код, отличный от 200:"
+CHECK_TOKENS_ERROR = "Требуемые переменные окружения отсутствуют:"
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат по TELEGRAM_CHAT_ID."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.info(f"Отправка сообщения в Телеграмм: '{message}'")
+        logger.info(f"Отправка сообщения в Телеграмм: '{message}'")
     except Exception:
-        logging.error("Сбой отправки сообщения в Телеграмм")
+        logger.error("Сбой отправки сообщения в Телеграмм")
 
 
 def get_api_answer(current_timestamp):
     """Делает запрос к единственному эндпоинту API-сервиса."""
-    timestamp = current_timestamp or int(time.time())
+    timestamp = current_timestamp
     params = {'from_date': timestamp}
     try:
-        hw_status = requests.get(ENDPOINT, headers=HEADERS, params=params)
+        response = requests.get(ENDPOINT, headers=HEADERS, params=params)
     except Exception as error:
         logging.error(f"Сервер yandex.practicum вернул ошибку: {error}")
 
-    if hw_status.status_code != 200:
-        status_code = hw_status.status_code
-        logging.error(f"API возвращает код, отличный от 200: {status_code}")
-        raise Exception(f"API возвращает код, отличный от 200: {status_code}")
+    if response.status_code != HTTPStatus.OK:
+        status_code = response.status_code
+        logging.error(f"{ERROR_API_MESSAGE} {status_code}")
+        raise Exception(f"{ERROR_API_MESSAGE} {status_code}")
 
     try:
-        return hw_status.json()
+        return response.json()
     except ValueError:
         logging.error("Ответ от сервера должен быть в формате JSON")
 
@@ -81,7 +86,7 @@ def check_response(response):
 
     if not isinstance(homework, list):
         logging.error("Homeworks не является списком")
-        return None
+        return TypeError(message)
 
     return homework
 
@@ -89,7 +94,11 @@ def check_response(response):
 def parse_status(homework):
     """Извлекает из информации о домашней работе статус этой работы."""
     homework_name = homework.get('homework_name')
-    homework_status = homework['status']
+    try:
+        homework_status = homework['status']
+    except KeyError:
+        logging.error(f'Отсутствует ключ {homework_status} в статусах работы')
+
     if homework_status not in HOMEWORK_STATUSES:
         raise KeyError(f'Отсутствует ключ {homework_status} в статусах работы')
     if homework_status in HOMEWORK_STATUSES:
@@ -104,23 +113,22 @@ def check_tokens():
     undefined_vars = set(filter(lambda v: not globals().get(v), ENV_VARS))
     if not undefined_vars:
         return True
-    print(f'Требуемые переменные окружения отсутствуют: {undefined_vars}')
+    logging.error(f'{CHECK_TOKENS_ERROR} {undefined_vars}')
     return False
 
 
 def main():
     """Основная логика работы бота."""
-    if not check_tokens():
-        return 0
-
-    current_timestamp = int(time.time()) - 100000
-    bot = Bot(token=TELEGRAM_TOKEN)
+    if check_tokens():
+        bot = Bot(token=TELEGRAM_TOKEN)
+        current_timestamp = int(time.time()) - 100000
+        last_error = ""
 
     while True:
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if ((type(homeworks) is list) and (len(homeworks) > 0)):
+            if len(homeworks) > 0:
                 message = parse_status(homeworks[0])
                 send_message(bot, message)
             else:
@@ -130,7 +138,10 @@ def main():
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logging.critical(message)
-            send_message(bot, message)
+            if last_error != message and 'Сбой отправки' not in message:
+                send_message(bot, message)
+                last_error = message
+            logging.error(message)
         finally:
             time.sleep(RETRY_TIME)
 
