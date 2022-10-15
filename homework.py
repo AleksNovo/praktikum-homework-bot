@@ -55,17 +55,17 @@ def get_api_answer(current_timestamp):
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
     except Exception as error:
-        logging.error(f"Сервер yandex.practicum вернул ошибку: {error}")
+        logger.error(f"Сервер yandex.practicum вернул ошибку: {error}")
 
     if response.status_code != HTTPStatus.OK:
         status_code = response.status_code
-        logging.error(f"{ERROR_API_MESSAGE} {status_code}")
+        logger.error(f"{ERROR_API_MESSAGE} {status_code}")
         raise Exception(f"{ERROR_API_MESSAGE} {status_code}")
 
     try:
         return response.json()
     except ValueError:
-        logging.error("Ответ от сервера должен быть в формате JSON")
+        logger.error("Ответ от сервера должен быть в формате JSON")
 
 
 def check_response(response):
@@ -78,15 +78,16 @@ def check_response(response):
         homework = response['homeworks']
     except KeyError:
         message = "Ответ от API не содержит ключ 'homeworks'."
-        logging.error(message)
+        logger.error(message)
         raise KeyError(message)
-    except IndexError:
+    except TypeError:
         message = "Задания не найдены. Пустой список."
-        logging.error(message)
-        raise IndexError(message)
+        logger.error(message)
+        raise TypeError(message)
 
     if not isinstance(homework, list):
-        logging.error("Homeworks не является списком")
+        message = "Homeworks не является списком."
+        logger.error(message)
         return TypeError(message)
 
     return homework
@@ -94,18 +95,17 @@ def check_response(response):
 
 def parse_status(homework):
     """Извлекает из информации о домашней работе статус этой работы."""
+    if 'status' not in homework:
+        raise KeyError("Отсутствует ключ 'homework_name' в статусах работы")
+    
     homework_name = homework.get('homework_name')
-    try:
-        homework_status = homework['status']
-    except KeyError:
-        logging.error(f'Отсутствует ключ {homework_status} в статусах работы')
-
+    homework_status = homework.get('status')
+    
     if homework_status not in HOMEWORK_STATUSES:
         raise KeyError(f'Отсутствует ключ {homework_status} в статусах работы')
-    if homework_status in HOMEWORK_STATUSES:
-        verdict = HOMEWORK_STATUSES.get(homework_status)
-        if not verdict:
-            logging.error('Отсутствие ожидаемых ключей в ответе API.')
+    verdict = HOMEWORK_STATUSES[homework_status]
+    if not verdict: 
+        raise logger.error('Отсутствие ожидаемых ключей в ответе API.') 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
@@ -114,12 +114,15 @@ def check_tokens():
     undefined_vars = set(filter(lambda v: not globals().get(v), ENV_VARS))
     if not undefined_vars:
         return True
-    logging.error(f'{CHECK_TOKENS_ERROR} {undefined_vars}')
+    logger.critical(f'{CHECK_TOKENS_ERROR} {undefined_vars}')
     return False
 
 
 def main():
     """Основная логика работы бота."""
+    if not check_tokens():
+        return SystemExit
+
     if check_tokens():
         bot = Bot(token=TELEGRAM_TOKEN)
         current_timestamp = int(time.time()) - 100000
@@ -133,16 +136,16 @@ def main():
                 message = parse_status(homeworks[0])
                 send_message(bot, message)
             else:
-                logging.info("Домашние задания не найдены.")
+                logger.info("Домашние задания не найдены.")
             current_timestamp = response.get('current_date')
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            logging.critical(message)
+            logger.critical(message)
             if last_error != message and 'Сбой отправки' not in message:
                 send_message(bot, message)
                 last_error = message
-            logging.error(message)
+            logger.error(message)
         finally:
             time.sleep(RETRY_TIME)
 
