@@ -149,7 +149,7 @@ def main():
                     logger.exception(f'Сбой отправки сообщения: {error}')
                 last_error = message
         time.sleep(RETRY_TIME)
-  
+
 
 if __name__ == '__main__':
     try:
