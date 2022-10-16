@@ -85,12 +85,12 @@ def check_response(response):
         logger.error(message)
         raise TypeError(message)
 
-    if not isinstance(homework, list):
+    if isinstance(homework, list):
+        return homework
+    else:
         message = "Homeworks не является списком."
         logger.error(message)
-        return TypeError(message)
-
-    return homework
+        raise TypeError(message)
 
 
 def parse_status(homework):
@@ -142,13 +142,14 @@ def main():
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.critical(message)
-            if last_error != message and 'Сбой отправки' not in message:
-                send_message(bot, message)
+            if last_error != message:
+                try:
+                    send_message(TELEGRAM_CHAT_ID, message)
+                except Exception as error:
+                    logger.exception(f'Сбой отправки сообщения: {error}')
                 last_error = message
-            logger.error(message)
-        finally:
-            time.sleep(RETRY_TIME)
-
+        time.sleep(RETRY_TIME)
+  
 
 if __name__ == '__main__':
     try:
