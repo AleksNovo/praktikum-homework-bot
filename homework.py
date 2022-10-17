@@ -54,15 +54,10 @@ def get_api_answer(current_timestamp):
     params = {'from_date': timestamp}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    except Exception as error:
-        logger.error(f"Сервер yandex.practicum вернул ошибку: {error}")
-
-    if response.status_code != HTTPStatus.OK:
-        status_code = response.status_code
-        logger.error(f"{ERROR_API_MESSAGE} {status_code}")
-        raise Exception(f"{ERROR_API_MESSAGE} {status_code}")
-
-    try:
+        if response.status_code != HTTPStatus.OK:
+            status_code = response.status_code
+            logger.error(f"{ERROR_API_MESSAGE} {status_code}")
+            raise Exception(f"{ERROR_API_MESSAGE} {status_code}")
         return response.json()
     except ValueError:
         logger.error("Ответ от сервера должен быть в формате JSON")
@@ -87,10 +82,9 @@ def check_response(response):
 
     if isinstance(homework, list):
         return homework
-    else:
-        message = "Homeworks не является списком."
-        logger.error(message)
-        raise TypeError(message)
+    message = "Homeworks не является списком."
+    logger.error(message)
+    raise TypeError(message)
 
 
 def parse_status(homework):
@@ -123,10 +117,9 @@ def main():
     if not check_tokens():
         return SystemExit
 
-    if check_tokens():
-        bot = Bot(token=TELEGRAM_TOKEN)
-        current_timestamp = int(time.time()) - 100000
-        last_error = ""
+    bot = Bot(token=TELEGRAM_TOKEN)
+    current_timestamp = int(time.time()) - 100000
+    last_error = ""
 
     while True:
         try:
@@ -143,12 +136,10 @@ def main():
             message = f'Сбой в работе программы: {error}'
             logger.critical(message)
             if last_error != message:
-                try:
-                    send_message(TELEGRAM_CHAT_ID, message)
-                except Exception as error:
-                    logger.exception(f'Сбой отправки сообщения: {error}')
+                send_message(TELEGRAM_CHAT_ID, message)
                 last_error = message
-        time.sleep(RETRY_TIME)
+        finally:
+            time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
